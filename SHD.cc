@@ -1,8 +1,8 @@
 /*
- * vector_ed.c
+ * SHD.cc
  *
- *  Created on: Nov 8, 2013
- *      Author: hxin
+ * Shifted Hamming Distance 预过滤实现。核心思路是对多个移位视图求交，
+ * 用位并行方式快速判断这对序列是否可能落在目标阈值内。
  */
 
 #include "print.h"
@@ -17,15 +17,17 @@
 using namespace std;
 
 /*
- * By little endians, left shift should actually be right shift in x86 convention
+ * 由于这里的 bit 布局遵循 x86 小端序约定，源码中的“左 / 右移”语义
+ * 需要结合最终的逻辑方向来理解。
  */
 
+// 对 SSE 版本的 mismatch 向量做“填洞”，避免短零段被错误当作真实匹配。
 void flip_false_zero(__m128i& vec) {
 
 //	printf("vec: \t\t");
 //	print128_bit(vec);
 
-	//Due to the special effect of shuffle_epi8, we have to erase the high order bit.
+	// shuffle_epi8 会把高位当作控制位，因此这里先清掉高位。
 	char temp_char = (char) 0x7f;
 	__m128i boundary= _mm_set1_epi8(0x7f);
 //	printf("MASK_7F: \t");
@@ -59,7 +61,7 @@ void flip_false_zero(__m128i& vec) {
 //		print128_bit(vec);
 	}
 
-	//For the crossing bits
+	// 处理跨 nibble / 跨字节边界时的传播情况。
 	__m128i shifted_vec = shift_right_sse(vec, 4);
 //	printf("shifted_vec: \t");
 //	print128_bit(shifted_vec);
@@ -89,12 +91,13 @@ void flip_false_zero(__m128i& vec) {
 //	print128_bit(vec);
 }
 
+// AVX 版本的“填洞”处理，逻辑与 SSE 版本一致。
 void flip_false_zero(__m256i& vec) {
 
 //	printf("vec: \t\t");
 //	print128_bit(vec);
 
-	//Due to the special effect of shuffle_epi8, we have to erase the high order bit.
+	// shuffle_epi8 会把高位当作控制位，因此这里先清掉高位。
 	__m256i boundary= _mm256_set1_epi8(0x7f);
 //	printf("MASK_7F: \t");
 //	print128_bit(*boundary);
@@ -156,6 +159,7 @@ void flip_false_zero(__m256i& vec) {
 //	print128_bit(vec);
 }
 
+// SSE 版本 SHD：直接从 read / ref bit-plane 构造多个移位视图并做过滤。
 int bit_vec_filter_sse(__m128i read_XMM0, __m128i read_XMM1,
 		__m128i ref_XMM0, __m128i ref_XMM1, int length, int max_error) {
 	
@@ -165,7 +169,7 @@ int bit_vec_filter_sse(__m128i read_XMM0, __m128i read_XMM1,
 	else
 		mask = _mm_load_si128( (__m128i *) (MASK_SSE_END + (length *
 										SSE_BYTE_LENGTH)));
-	//Clear unnecessary bits
+	// 清除长度边界之外的无效 bit。
 	read_XMM0 = _mm_and_si128(read_XMM0, mask);
 	read_XMM1 = _mm_and_si128(read_XMM1, mask);
 	ref_XMM0 = _mm_and_si128(ref_XMM0, mask);
@@ -173,7 +177,7 @@ int bit_vec_filter_sse(__m128i read_XMM0, __m128i read_XMM1,
 
 	int total_difference = 0;
 
-	//Start iteration
+	// 迭代所有允许的移位视图。
 	int j;
 
 	__m128i shift_XMM;
@@ -196,7 +200,7 @@ int bit_vec_filter_sse(__m128i read_XMM0, __m128i read_XMM1,
 								SSE_BYTE_LENGTH));
 		temp_mask = _mm_and_si128(temp_mask, mask);
 		
-		//Right shift read
+		// 先对 read 侧做移位，再与 reference 比较。
 		shift_XMM = shift_right_sse(read_XMM0, j);
 		temp_diff_XMM = _mm_xor_si128(shift_XMM, ref_XMM0);
 		shift_XMM = shift_right_sse(read_XMM1, j);
@@ -212,7 +216,7 @@ int bit_vec_filter_sse(__m128i read_XMM0, __m128i read_XMM1,
 
 //		printf("diff_XMM: \t");
 //		print128_bit(diff_XMM);
-//Right shift ref
+		// 再对 reference 侧做移位，与原始 read 比较。
 		shift_XMM = shift_right_sse(ref_XMM0, j);
 		temp_diff_XMM = _mm_xor_si128(shift_XMM, read_XMM0);
 		shift_XMM = shift_right_sse(ref_XMM1, j);
@@ -240,6 +244,7 @@ int bit_vec_filter_sse(__m128i read_XMM0, __m128i read_XMM1,
 		return 1;
 }
 
+// AVX 版本 SHD：直接从 read / ref bit-plane 构造多个移位视图并做过滤。
 int bit_vec_filter_avx(__m256i read_YMM0, __m256i read_YMM1,
 		__m256i ref_YMM0, __m256i ref_YMM1, int length, int max_error) {
 	
@@ -250,7 +255,7 @@ int bit_vec_filter_avx(__m256i read_YMM0, __m256i read_YMM1,
 		mask = _mm256_load_si256( (__m256i *) (MASK_AVX_END + (length *
 										AVX_BYTE_LENGTH)));
 
-	//Clear unnecessary bits
+	// 清除长度边界之外的无效 bit。
 	read_YMM0 = _mm256_and_si256(read_YMM0, mask);
 	read_YMM1 = _mm256_and_si256(read_YMM1, mask);
 	ref_YMM0 = _mm256_and_si256(ref_YMM0, mask);
@@ -258,7 +263,7 @@ int bit_vec_filter_avx(__m256i read_YMM0, __m256i read_YMM1,
 
 	int total_difference = 0;
 
-	//Start iteration
+	// 迭代所有允许的移位视图。
 	int j;
 
 	__m256i shift_YMM;
@@ -283,7 +288,7 @@ int bit_vec_filter_avx(__m256i read_YMM0, __m256i read_YMM1,
 								AVX_BYTE_LENGTH));
 		temp_mask = _mm256_and_si256(temp_mask, mask);
 		
-		//Right shift read
+		// 先对 read 侧做移位，再与 reference 比较。
 		shift_YMM = shift_right_avx(read_YMM0, j);
 		temp_diff_YMM = _mm256_xor_si256(shift_YMM, ref_YMM0);
 		shift_YMM = shift_right_avx(read_YMM1, j);
@@ -300,7 +305,7 @@ int bit_vec_filter_avx(__m256i read_YMM0, __m256i read_YMM1,
 //		printf("diff_YMM: \t");
 //		print128_bit(diff_YMM);
 
-		//Right shift ref
+		// 再对 reference 侧做移位，与原始 read 比较。
 		shift_YMM = shift_right_avx(ref_YMM0, j);
 		temp_diff_YMM = _mm256_xor_si256(shift_YMM, read_YMM0);
 		shift_YMM = shift_right_avx(ref_YMM1, j);
@@ -334,6 +339,7 @@ int bit_vec_filter_avx(__m256i read_YMM0, __m256i read_YMM1,
 		return 1;
 }
 
+// AVX 版本 SHD：直接复用预先计算好的 lane mismatch mask 做过滤。
 int bit_vec_filter_avx(__m256i *xor_masks, int length, int max_error) {
 	
 	__m256i mask;
@@ -357,7 +363,7 @@ int bit_vec_filter_avx(__m256i *xor_masks, int length, int max_error) {
 #endif
 
 	for (int j = 0; j <= 2 * max_error; j++) {
-		//Right shift read
+		// 复用预先算好的 lane mask，并套上当前位置允许的边界掩码。
 		int error = abs(j - max_error);
 		temp_mask = _mm256_load_si256( (__m256i *) (MASK_AVX_BEG + (error - 1) *
 								AVX_BYTE_LENGTH));

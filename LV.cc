@@ -1,6 +1,14 @@
+/*
+ * LV.cc
+ *
+ * 标量版 Levenshtein 阈值搜索实现。该文件保留了最直接的
+ * farthest-reaching lane 推进逻辑，方便与 SIMD 版本对照。
+ */
+
 #include "LV.h"
 #include <cstdio>
 
+// 沿当前 lane 从 start_pos 开始继续向前，直到遇到第一个不匹配字符。
 int __attribute__((optimize("O0"))) LV::count_ID_length_sse(int lane_idx, int start_pos) {
 	int A_idx_offset = 0;
 	int B_idx_offset = 0;
@@ -17,6 +25,7 @@ int __attribute__((optimize("O0"))) LV::count_ID_length_sse(int lane_idx, int st
 	return start_pos;
 }
 
+// 仅初始化指针与默认状态，真正分配在 init() 中完成。
 LV::LV() {
 	ED_t = 0;
 
@@ -28,6 +37,7 @@ LV::LV() {
 	total_lanes = 0;
 }
 
+// 释放 init() 中按阈值分配的状态表。
 LV::~LV() {
 	if (total_lanes != 0) {
 		delete [] cur_ED;
@@ -44,6 +54,7 @@ LV::~LV() {
 	}
 }
 
+// 按给定编辑距离阈值初始化 lane 布局和状态缓存。
 void LV::init(int ED_threshold) {
 	if (total_lanes != 0)
 		this->~LV();
@@ -64,6 +75,7 @@ void LV::init(int ED_threshold) {
 	}
 }
 
+// 拷贝当前 read / reference 到内部缓冲区。
 void LV::load_reads(char *read, char *ref, int length) {
 	buffer_length = length;
 	
@@ -76,6 +88,7 @@ void LV::load_reads(char *read, char *ref, int length) {
 	//cout << "buffer_length: " << buffer_length << endl;
 }
 
+// 为新一轮搜索重置每条 lane 当前所在的编辑距离层。
 void LV::reset() {
 	ED_pass = false;
 	for (int i = 1; i < total_lanes - 1; i++) {
@@ -86,6 +99,7 @@ void LV::reset() {
 	}
 }
 
+// 核心 Landau-Vishkin 推进过程：逐层扩大允许编辑数，并维护每条 lane 的最远可达位置。
 void LV::run() {
 	end[mid_lane][0] = count_ID_length_sse(mid_lane, 0);
 	cur_ED[mid_lane] = 1;
@@ -111,14 +125,14 @@ void LV::run() {
 				if (l <= mid_lane)
 					bot_offset = 1;
 
-				// Find the largest starting position
+				// 在三种可能转移中选出最靠前的起点。
 				int max_start = end[l][e-1] + 1;
 				if (end[l-1][e-1] + top_offset > max_start)
 					max_start = end[l-1][e-1] + top_offset;
 				if (end[l+1][e-1] + bot_offset > max_start)
 					max_start = end[l+1][e-1] + bot_offset;
 
-				// Find the length of identical string
+				// 从该起点继续向前延伸连续匹配段。
 				start[l][e] = max_start;
 				end[l][e] = count_ID_length_sse(l, max_start);
 
@@ -142,10 +156,12 @@ void LV::run() {
 	}
 }
 
+// 返回最近一次 run() 的通过结果。
 bool LV::check_pass() {
 	return ED_pass;
 }
 
+// 根据最终命中的 lane 和编辑距离层，逆向恢复编辑操作序列。
 void LV::backtrack() {
 	int lane_idx = final_lane_idx;
 	int ED_probe = final_ED;
@@ -192,10 +208,12 @@ void LV::backtrack() {
 
 }
 
+// 返回最近一次搜索得到的编辑距离。
 int LV::get_ED() {
 	return final_ED;
 }
 
+// 将 backtrack() 恢复的编辑操作转换成简化的 CIGAR 风格字符串。
 string LV::get_CIGAR() {
 	char buffer[32];
 	string CIGAR;
@@ -222,4 +240,3 @@ string LV::get_CIGAR() {
 
 	return CIGAR;
 }
-

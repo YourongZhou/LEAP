@@ -1,8 +1,10 @@
 /*
- * vector_filterMain.c
+ * testNW.cc
  *
- *  Created on: Nov 12, 2013
- *      Author: hxin
+ * 多路对比驱动程序。它可以在同一份输入上对比：
+ * 1. 仓库内的 SIMD 搜索
+ * 2. Parasail 的 banded Needleman-Wunsch
+ * 3. Parasail 的 SIMD Needleman-Wunsch
  */
 
 //#ifndef BOOST_PP_IS_ITERATING
@@ -113,6 +115,7 @@ int main(int argc, char* argv[]) {
         ed_obj.init_affine(error, error * 3, ED_GLOBAL, 2, 3, 1, tmp);
     }
 
+    // 按批次读取输入，直到遇到结束标记。
     do {
         //clear past result
 //      strncpy(read, init_all_NULL, 128);
@@ -153,9 +156,10 @@ int main(int argc, char* argv[]) {
 
         times(&start_time);
 
+        // 对当前批次执行选定算法，并记录是否通过阈值。
         for (read_idx = 0; read_idx < read_size; read_idx++) {
 
-            // do the skipED affine.
+            // 使用仓库内的 SIMD 路径。
             if (algo_choose == 0) {
                 int length = read_strs[read_idx].length();
                 ed_obj.load_reads((char*) read_strs[read_idx].c_str(), (char*) ref_strs[read_idx].c_str(), length);
@@ -192,7 +196,7 @@ int main(int argc, char* argv[]) {
             //    }
             //}
 
-            // nw
+            // 使用 Parasail 的 banded Needleman-Wunsch。
             else if (algo_choose == 1) {
                 seq1 = (const char*)read_strs[read_idx].c_str();
                 seq2 = (const char*)ref_strs[read_idx].c_str();
@@ -208,7 +212,7 @@ int main(int argc, char* argv[]) {
                 parasail_result_free(parasail_result);
             }
 
-            // nw  w/ SIMD
+            // 使用 Parasail 的 SIMD Needleman-Wunsch。
             else if (algo_choose == 2) {
                 seq1 = (const char*)read_strs[read_idx].c_str();
                 seq2 = (const char*)ref_strs[read_idx].c_str();

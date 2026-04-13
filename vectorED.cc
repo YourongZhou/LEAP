@@ -1,8 +1,9 @@
 /*
- * vector_filterMain.c
+ * vectorED.cc
  *
- *  Created on: Nov 12, 2013
- *      Author: hxin
+ * affine gap 对比驱动程序。它可以在同一套输入上选择：
+ * 1. 仓库内的 SIMD affine 实现
+ * 2. Needleman-Wunsch 基线实现
  */
 
 //#ifndef BOOST_PP_IS_ITERATING
@@ -99,6 +100,7 @@ int main(int argc, char* argv[]) {
 	//ed_obj.init_levenshtein(error, ED_GLOBAL, false);
 	ed_obj.init_affine(error, error * 2, ED_GLOBAL, 2, 3, 1);
 
+	// 按批次读取输入，直到遇到结束标记。
 	do {
 		//clear past result
 //		strncpy(read, init_all_NULL, 128);
@@ -139,9 +141,10 @@ int main(int argc, char* argv[]) {
 
 		times(&start_time);
 
+		// 对当前批次序列执行选定算法，并记录是否通过阈值。
 		for (read_idx = 0; read_idx < read_size; read_idx++) {
 			
-            // do the skipED affine. 
+            // 使用仓库内的 SIMD affine 路径。
             if (algo_choose == 0) { 
                 int length = read_strs[read_idx].length();
                 ed_obj.load_reads((char*) read_strs[read_idx].c_str(), (char*) ref_strs[read_idx].c_str(), length);
@@ -159,7 +162,7 @@ int main(int argc, char* argv[]) {
                     //printf("fail read_num:%u\n", read_idx); 
                 }
             }
-            // do the Needleman-Wunsch Affine ED 
+            // 使用 Needleman-Wunsch affine gap 基线路径。
             else if (algo_choose == 1) {
                 seq1 = (char*)read_strs[read_idx].c_str(); 
                 seq2 = (char*)ref_strs[read_idx].c_str();

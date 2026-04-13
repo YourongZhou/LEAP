@@ -1,7 +1,15 @@
+/*
+ * LV_BAG.cc
+ *
+ * 标量版 affine gap 搜索实现。其状态转移与 SIMD_ED 的 affine 模式
+ * 基本对应，用于做功能验证和性能基线。
+ */
+
 #include "LV_BAG.h"
 #include <cstdio>
 #include <cassert>
 
+// 沿当前 lane 从 start_pos 开始继续向前，直到遇到第一个不匹配字符。
 int __attribute__((optimize("O0"))) LV::count_ID_length(int lane_idx, int start_pos) {
 	int A_idx_offset = 0;
 	int B_idx_offset = 0;
@@ -18,6 +26,7 @@ int __attribute__((optimize("O0"))) LV::count_ID_length(int lane_idx, int start_
 	return start_pos;
 }
 
+// 仅初始化指针与默认状态，真正分配在 init() 中完成。
 LV::LV() {
 	start = NULL;
 	end = NULL;
@@ -29,6 +38,7 @@ LV::LV() {
 	total_lanes = 0;
 }
 
+// 释放 affine gap 状态表和回溯缓存。
 LV::~LV() {
 	if (total_lanes != 0) {
 		for (int i = 0; i < total_lanes; i++) {
@@ -58,6 +68,7 @@ LV::~LV() {
 	}
 }
 
+// 根据 affine gap 参数与模式初始化 lane 状态表。
 void LV::init(int gap_threshold, int af_threshold, ED_modes mode, int ms_penalty, int gap_open_penalty, int gap_ext_penalty) {
 	if (total_lanes != 0)
 		this->~LV();
@@ -103,6 +114,7 @@ void LV::init(int gap_threshold, int af_threshold, ED_modes mode, int ms_penalty
 
 }
 
+// 拷贝当前 read / reference 到内部缓冲区。
 void LV::load_reads(char *read, char *ref, int length) {
 	buffer_length = length;
 	
@@ -115,11 +127,13 @@ void LV::load_reads(char *read, char *ref, int length) {
 	//cout << "buffer_length: " << buffer_length << endl;
 }
 
+// 为一次新的 affine gap 搜索重置最终状态。
 void LV::reset() {
 	ED_pass = false;
 	converge_ED = 1000000;
 }
 
+// affine gap 核心推进过程：同时维护匹配、插入链和删除链的最远可达位置。
 void LV::run() {
 	int top_offset = 0;
     int bot_offset = 0;
@@ -146,19 +160,19 @@ void LV::run() {
 
 		for (int l = 1; l < total_lanes - 1; l++) {
 
-			// top_offset means the path is going down
+			// top_offset 表示路径向下走时需要补的位移。
             if (l >= mid_lane)
                 top_offset = 1;
 			else
 				top_offset = 0;	
 
-			// bot_offset means the path is going up
+			// bot_offset 表示路径向上走时需要补的位移。
             if (l <= mid_lane)
                 bot_offset = 1;
 			else
 				bot_offset = 0;
 
-			// Assuming gap_open_penalty > gap_ext_penalty
+			// 默认假设 gap_open_penalty 大于 gap_ext_penalty。
 			if (e >= gap_open_penalty && end[l-1][e-gap_open_penalty] >= 0 && end[l-1][e-gap_open_penalty] > I_pos[l-1][e-gap_ext_penalty]) {
 				I_pos[l][e] = end[l-1][e-gap_open_penalty] + top_offset;
 #ifdef debug	
@@ -240,10 +254,12 @@ void LV::run() {
 	}
 }
 
+// 返回最近一次 run() 的通过结果。
 bool LV::check_pass() {
 	return ED_pass;
 }
 
+// 根据 affine gap 状态表逆向恢复编辑路径。
 void LV::backtrack() {
 
 	ED_count = 0;
@@ -286,7 +302,7 @@ void LV::backtrack() {
 			while (I_pos[lane_idx - 1][ED_probe-gap_ext_penalty] + top_offset == I_pos[lane_idx][ED_probe]) {
 				ED_info[ED_count].type = A_INS;
 				ED_count++;
-				// Prepare for the next edit
+				// 为下一次编辑动作预留一个新的输出槽位。
 				ED_info[ED_count].id_length = 0;
 
 				lane_idx--;
@@ -298,7 +314,7 @@ void LV::backtrack() {
 					top_offset = 0;
 
 			}
-			// When it stops extending, it must open a gap
+			// 如果不能继续延伸，则当前步骤一定对应一次 gap open。
 			assert(end[lane_idx-1][ED_probe-gap_open_penalty] + top_offset == I_pos[lane_idx][ED_probe]);
 			ED_info[ED_count].type = A_INS;
 			ED_count++;
@@ -317,7 +333,7 @@ void LV::backtrack() {
 			while (D_pos[lane_idx+1][ED_probe-gap_ext_penalty] + bot_offset == D_pos[lane_idx][ED_probe]) {
 				ED_info[ED_count].type = B_INS;
 				ED_count++;
-				// Prepare for the next edit
+				// 为下一次编辑动作预留一个新的输出槽位。
 				ED_info[ED_count].id_length = 0;
 
 				lane_idx++;
@@ -329,7 +345,7 @@ void LV::backtrack() {
 					bot_offset = 0;
 
 			}
-			// When it stops extending, it must open a gap
+			// 如果不能继续延伸，则当前步骤一定对应一次 gap open。
 			assert(end[lane_idx+1][ED_probe-gap_open_penalty] + bot_offset == D_pos[lane_idx][ED_probe]);
 			ED_info[ED_count].type = B_INS;
 			ED_count++;
@@ -349,10 +365,12 @@ void LV::backtrack() {
 	ED_info[ED_probe].id_length = match_count;
 }
 
+// 返回最近一次搜索得到的总代价。
 int LV::get_ED() {
 	return final_ED;
 }
 
+// 将 affine gap 回溯结果转换成简化的 CIGAR 风格字符串。
 string LV::get_CIGAR() {
 	char buffer[32];
 	string CIGAR;
@@ -379,4 +397,3 @@ string LV::get_CIGAR() {
 
 	return CIGAR;
 }
-

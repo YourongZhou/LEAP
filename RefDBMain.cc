@@ -1,3 +1,10 @@
+/*
+ * RefDBMain.cc
+ *
+ * RefDB 的最小使用示例：构建数据库、重新加载，并查询一个参考窗口，
+ * 最后与现场编码结果做对照。
+ */
+
 #include "RefDB.h"
 #include "print.h"
 #include "bit_convert.h"

@@ -1,9 +1,10 @@
 /*
  * RefDB.cc
  *
- *  Created on: May 30, 2013
- *      Author: hxin
+ * 参考序列预编码数据库实现。它把 reference 按双 bit-plane 布局存盘，
+ * 读取时可直接返回与 SIMD_ED 兼容的 AVX 查询窗口。
  */
+
 #include "RefDB.h"
 #include "shift.h"
 #include <x86intrin.h>
@@ -14,6 +15,7 @@
 #define BLANK_SPACE 1048576
 #define BYTE_LENGTH 8 
 
+// 初始化对象成员为“未加载 / 未分配”状态。
 RefDB::RefDB() {
 	chromo_array = NULL;
 	length_gen = 0;
@@ -21,6 +23,7 @@ RefDB::RefDB() {
 	bit1_gen = NULL;
 }
 
+// 释放数据库元信息、临时缓存和文件句柄。
 RefDB::~RefDB() {
 	if (chromo_array != NULL) {
 		delete [] chromo_array;
@@ -41,6 +44,7 @@ RefDB::~RefDB() {
 		db_file.close();
 }
 
+// 进入生成模式，创建临时输出文件并记录首个写入位置。
 void RefDB::init_generate() {
 	if (!temp_file.is_open() ) {
 		temp_file.open("temp.refDB", ofstream::out);
@@ -52,6 +56,7 @@ void RefDB::init_generate() {
 	pos_array.push_back(temp_file.tellp() );
 }
 
+// 把一条 reference 编码为双 bit-plane 并追加到临时文件中。
 void RefDB::add_chromo(char *chromo_string, uint64_t length) {
 	char aligned_buff [AVX_BIT_LENGTH] __aligned__;
 	uint8_t bit0_buff [AVX_BYTE_LENGTH] __aligned__;
@@ -96,6 +101,7 @@ void RefDB::add_chromo(char *chromo_string, uint64_t length) {
 	pos_array.push_back(temp_file.tellp() );
 }
 
+// 把临时文件整理成最终数据库格式，并在文件头写入元信息区。
 void RefDB::finish_and_store(string db_name) {
 	if (temp_file.is_open())
 		temp_file.close();
@@ -149,6 +155,7 @@ void RefDB::finish_and_store(string db_name) {
 	//remove("temp.refDB");
 }
 
+// 进入加载模式，读取数据库头部并初始化所有染色体元信息。
 void RefDB::init_load(string db_name) {
 	if (db_file.is_open() )
 		db_file.close();
@@ -173,6 +180,7 @@ void RefDB::init_load(string db_name) {
 	}
 }
 
+// 按需把一条染色体的 bit-plane 从磁盘读入内存。
 bool RefDB::load_chromo(int chromo_num) {
 	if (chromo_num > chromo_total)
 		return false;
@@ -192,6 +200,7 @@ bool RefDB::load_chromo(int chromo_num) {
 	return true;
 }
 
+// 卸载一条已经加载的染色体。
 void RefDB::unload_chromo(int chromo_num) {
 	if (chromo_array[chromo_num].loaded) {
 		chromo_array[chromo_num].loaded = false;
@@ -202,11 +211,13 @@ void RefDB::unload_chromo(int chromo_num) {
 	}
 }
 
+// 卸载所有已加载染色体。
 void RefDB::unload_all() {
 	for (int i = 0; i < chromo_total; i++)
 		unload_chromo(i);
 }
 
+// 查询指定位置的 reference 窗口，并把它整理成位对齐后的 AVX 结果。
 bool RefDB::query(int chromo_num, int chromo_pos, int query_length, __m256i& bit0, __m256i& bit1) {
 	if (!chromo_array[chromo_num].loaded || chromo_pos + query_length > chromo_array[chromo_num].length)
 		return false;
@@ -221,6 +232,7 @@ bool RefDB::query(int chromo_num, int chromo_pos, int query_length, __m256i& bit
 	return true;
 }
 
+// 返回数据库中的染色体总数。
 int RefDB::get_total_chromo_num(){
 	return chromo_total;
 }

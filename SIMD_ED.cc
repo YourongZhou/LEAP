@@ -1,8 +1,17 @@
+/*
+ * SIMD_ED.cc
+ *
+ * 主算法实现。该文件把 lane-based farthest-reaching 搜索与 AVX
+ * 位并行匹配扩展结合起来，并提供普通 Levenshtein 与 affine gap 两种模式。
+ */
+
 #include <cstdio>
 #include "SIMD_ED.h"
 #include "SHD.h"
 #include <cassert>
 
+// 在指定 lane 上，从 start_pos 开始统计连续匹配长度。
+// 这里通过对 mismatch mask 做位移，然后利用 tzcnt 找到第一个不匹配位。
 int SIMD_ED::count_ID_length_avx(int lane_idx, int start_pos) {
 	__m256i shifted_mask = shift_left_avx(hamming_masks[lane_idx], start_pos);
 	
@@ -56,6 +65,7 @@ int SIMD_ED::count_ID_length_avx(int lane_idx, int start_pos) {
 		return buffer_length - start_pos;
 }
 
+// 仅初始化默认状态，真正的缓冲区分配在 init_*() 中完成。
 SIMD_ED::SIMD_ED() {
 	ED_t = 0;
 
@@ -74,6 +84,7 @@ SIMD_ED::SIMD_ED() {
 	total_lanes = 0;
 }
 
+// 释放当前模式下分配的所有状态表与中间缓冲区。
 SIMD_ED::~SIMD_ED() {
 	if (total_lanes != 0) {
         if (affine_mode) {
@@ -114,6 +125,7 @@ SIMD_ED::~SIMD_ED() {
 	}
 }
 
+// 把字符序列转换成两个 bit-plane，便于后续批量比较。
 void SIMD_ED::convert_reads(char *read, char *ref, int length, uint8_t *A0, uint8_t *A1, uint8_t *B0, uint8_t *B1) {
 	if (length > _MAX_LENGTH_)
 		length = _MAX_LENGTH_;
@@ -131,6 +143,7 @@ void SIMD_ED::convert_reads(char *read, char *ref, int length, uint8_t *A0, uint
 	memcpy(B1, B_bit1_t, (length - 1) / 8 + 1);
 }
 
+// 直接加载字符形式输入，并在内部完成 AVX bit-plane 编码。
 void SIMD_ED::load_reads(char *read, char *ref, int length) {
 	buffer_length = length;
 	
@@ -146,6 +159,7 @@ void SIMD_ED::load_reads(char *read, char *ref, int length) {
 	//cout << "B: " << B  << endl;
 }
 
+// 加载已经编码好的 bit-plane 输入。
 void SIMD_ED::load_reads(uint8_t *A0, uint8_t *A1, uint8_t *B0, uint8_t *B1, int length) {
 	buffer_length = length;
 	memcpy(A_bit0_t, A0, (length - 1) / 8 + 1);
@@ -154,6 +168,7 @@ void SIMD_ED::load_reads(uint8_t *A0, uint8_t *A1, uint8_t *B0, uint8_t *B1, int
 	memcpy(B_bit1_t, B1, (length - 1) / 8 + 1);
 }
 
+// 直接从 YMM 寄存器形式加载输入。
 void SIMD_ED::load_reads(__m256i A0, __m256i A1, __m256i B0, __m256i B1, int length) {
 	buffer_length = length;
 	_mm256_store_si256((__m256i*) A_bit0_t, A0);
@@ -162,17 +177,20 @@ void SIMD_ED::load_reads(__m256i A0, __m256i A1, __m256i B0, __m256i B1, int len
 	_mm256_store_si256((__m256i*) B_bit1_t, B1);
 }
 
+// 只更新 read 侧，适合 reference 复用的场景。
 void SIMD_ED::load_read(__m256i A0, __m256i A1, int length) {
 	buffer_length = length;
 	_mm256_store_si256((__m256i*) A_bit0_t, A0);
 	_mm256_store_si256((__m256i*) A_bit1_t, A1);
 }
 
+// 只更新 reference 侧，适合批量比较多个 read。
 void SIMD_ED::load_ref(__m256i B0, __m256i B1) {
 	_mm256_store_si256((__m256i*) B_bit0_t, B0);
 	_mm256_store_si256((__m256i*) B_bit1_t, B1);
 }
 
+// 为每条 lane 预计算 mismatch mask，后续搜索只需围绕 mask 推进。
 void SIMD_ED::calculate_masks() {
 	__m256i *A0 = (__m256i*) A_bit0_t;
 	__m256i *A1 = (__m256i*) A_bit1_t;
@@ -207,8 +225,9 @@ void SIMD_ED::calculate_masks() {
 	}
 }
 
+// 初始化普通 Levenshtein 模式需要的 lane 状态表。
 void SIMD_ED::init_levenshtein(int ED_threshold, ED_modes mode, bool SHD_enable) {
-    // just to clear the affine mode data.
+    // 如果之前处于 affine 模式，先释放对应状态表。
     this->~SIMD_ED();
 
 	this->SHD_enable = SHD_enable;
@@ -249,6 +268,7 @@ void SIMD_ED::init_levenshtein(int ED_threshold, ED_modes mode, bool SHD_enable)
 	}
 }
 
+// 为一次新的 Levenshtein 搜索重置当前编辑层信息。
 void SIMD_ED::reset_levenshtein() {
 	ED_pass = false;
 	for (int i = 1; i < total_lanes - 1; i++) {
@@ -262,6 +282,7 @@ void SIMD_ED::reset_levenshtein() {
 	}
 }
 
+// 普通 Levenshtein 模式：先可选跑 SHD，再按编辑距离层逐步扩展所有 lane。
 void SIMD_ED::run_levenshtein() {
 	if (SHD_enable && !bit_vec_filter_avx(hamming_masks+1, buffer_length, ED_t) ) {
 		ED_pass = false;
@@ -307,7 +328,7 @@ void SIMD_ED::run_levenshtein() {
 				if (l <= mid_lane)
 					bot_offset = 1;
 
-				// Find the largest starting position
+				// 在三种可能转移中选出最靠前的起点。
 				int max_start = end[l][e-1] + 1;
 				if (end[l-1][e-1] + top_offset > max_start)
 					max_start = end[l-1][e-1] + top_offset;
@@ -316,7 +337,7 @@ void SIMD_ED::run_levenshtein() {
 
 				start[l][e] = max_start;
 
-				// Find the length of identical string
+				// 从该起点继续向前延伸连续匹配段。
 				length = count_ID_length_avx(l, start[l][e]);
 
 				end[l][e] = max_start + length;
@@ -348,6 +369,7 @@ void SIMD_ED::run_levenshtein() {
 	}
 }
 
+// 根据 Levenshtein 状态表逆向恢复编辑序列。
 void SIMD_ED::backtrack_levenshtein() {
 
 #ifdef debug	
@@ -428,8 +450,9 @@ void SIMD_ED::backtrack_levenshtein() {
 #endif
 }
 
+// 初始化 affine gap 模式需要的状态表与参数。
 void SIMD_ED::init_affine(int gap_threshold, int af_threshold, ED_modes mode, int ms_penalty, int gap_open_penalty, int gap_ext_penalty, bool SHD_enable, int SHD_threshold) {
-    // just to clear the normal mode data.
+    // 如果之前处于普通模式，先释放对应状态表。
     this->~SIMD_ED();
     affine_mode = true;
     this->ms_penalty = ms_penalty;
@@ -476,11 +499,13 @@ void SIMD_ED::init_affine(int gap_threshold, int af_threshold, ED_modes mode, in
 
 }
 
+// 为一次新的 affine gap 搜索重置最终状态。
 void SIMD_ED::reset_affine() {
 	ED_pass = false;
 	converge_ED = 1000000;
 }
 
+// affine gap 模式：同时推进匹配、插入链和删除链的最远可达位置。
 void SIMD_ED::run_affine() {
 	if (SHD_enable && !bit_vec_filter_avx(hamming_masks+1, buffer_length, SHD_threshold) ) {
 		ED_pass = false;
@@ -515,19 +540,19 @@ void SIMD_ED::run_affine() {
 
 		for (int l = 1; l < total_lanes - 1; l++) {
 
-			// top_offset means the path is going down
+			// top_offset 表示路径向下走时需要补的位移。
             if (l >= mid_lane)
                 top_offset = 1;
 			else
 				top_offset = 0;	
 
-			// bot_offset means the path is going up
+			// bot_offset 表示路径向上走时需要补的位移。
             if (l <= mid_lane)
                 bot_offset = 1;
 			else
 				bot_offset = 0;
 
-			// Assuming gap_open_penalty > gap_ext_penalty
+			// 默认假设 gap_open_penalty 大于 gap_ext_penalty。
 			if (e >= gap_open_penalty && end[l-1][e-gap_open_penalty] >= 0 && end[l-1][e-gap_open_penalty] > I_pos[l-1][e-gap_ext_penalty]) {
 				I_pos[l][e] = end[l-1][e-gap_open_penalty] + top_offset;
 #ifdef debug	
@@ -611,6 +636,7 @@ void SIMD_ED::run_affine() {
 
 }
 
+// 根据 affine gap 状态表逆向恢复 gap 打开 / 延伸与 mismatch 的组合路径。
 void SIMD_ED::backtrack_affine() {
 
 	ED_count = 0;
@@ -653,7 +679,7 @@ void SIMD_ED::backtrack_affine() {
 			while (I_pos[lane_idx - 1][ED_probe-gap_ext_penalty] + top_offset == I_pos[lane_idx][ED_probe]) {
 				ED_info[ED_count].type = A_INS;
 				ED_count++;
-				// Prepare for the next edit
+				// 为下一次编辑动作预留一个新的输出槽位。
 				ED_info[ED_count].id_length = 0;
 
 				lane_idx--;
@@ -665,7 +691,7 @@ void SIMD_ED::backtrack_affine() {
 					top_offset = 0;
 
 			}
-			// When it stops extending, it must open a gap
+			// 如果不能继续延伸，则当前步骤一定对应一次 gap open。
 			assert(end[lane_idx-1][ED_probe-gap_open_penalty] + top_offset == I_pos[lane_idx][ED_probe]);
 			ED_info[ED_count].type = A_INS;
 			ED_count++;
@@ -684,7 +710,7 @@ void SIMD_ED::backtrack_affine() {
 			while (D_pos[lane_idx+1][ED_probe-gap_ext_penalty] + bot_offset == D_pos[lane_idx][ED_probe]) {
 				ED_info[ED_count].type = B_INS;
 				ED_count++;
-				// Prepare for the next edit
+				// 为下一次编辑动作预留一个新的输出槽位。
 				ED_info[ED_count].id_length = 0;
 
 				lane_idx++;
@@ -696,7 +722,7 @@ void SIMD_ED::backtrack_affine() {
 					bot_offset = 0;
 
 			}
-			// When it stops extending, it must open a gap
+			// 如果不能继续延伸，则当前步骤一定对应一次 gap open。
 			assert(end[lane_idx+1][ED_probe-gap_open_penalty] + bot_offset == D_pos[lane_idx][ED_probe]);
 			ED_info[ED_count].type = B_INS;
 			ED_count++;
@@ -716,6 +742,7 @@ void SIMD_ED::backtrack_affine() {
 	ED_info[ED_probe].id_length = match_count;
 }
 
+// 对外统一的 reset() 分发接口。
 void SIMD_ED::reset() {
 	if (affine_mode)
 		reset_affine();
@@ -723,6 +750,7 @@ void SIMD_ED::reset() {
 		reset_levenshtein();
 }
 
+// 对外统一的 run() 分发接口。
 void SIMD_ED::run() {
 	if (affine_mode)
 		run_affine();
@@ -730,6 +758,7 @@ void SIMD_ED::run() {
 		run_levenshtein();
 }
 
+// 对外统一的 backtrack() 分发接口。
 void SIMD_ED::backtrack() {
 	if (affine_mode)
 		backtrack_affine();
@@ -737,10 +766,12 @@ void SIMD_ED::backtrack() {
 		backtrack_levenshtein();
 }
 
+// 返回最近一次搜索的通过结果。
 bool SIMD_ED::check_pass() {
 	return ED_pass;
 }
 
+// 返回最近一次搜索得到的编辑距离或 affine 代价。
 int SIMD_ED::get_ED() {
 	if (mode == ED_GLOBAL || mode == ED_SEMI_FREE_BEGIN)
 		return converge_ED;
@@ -748,6 +779,7 @@ int SIMD_ED::get_ED() {
 		return final_ED;
 }
 
+// 将回溯结果转换成简化的 CIGAR 风格字符串。
 string SIMD_ED::get_CIGAR() {
 	//char buffer[32];
 	string CIGAR;
@@ -774,4 +806,3 @@ string SIMD_ED::get_CIGAR() {
 
 	return CIGAR;
 }
-

@@ -1,8 +1,8 @@
 /*
- * vector_filterMain.c
+ * testLV_BAG.cc
  *
- *  Created on: Nov 12, 2013
- *      Author: hxin
+ * 标量 affine gap 基线驱动程序。它读取成对序列，调用 LV_BAG 风格的
+ * 标量实现完成阈值判断，并输出通过统计。
  */
 
 //#ifndef BOOST_PP_IS_ITERATING
@@ -64,6 +64,7 @@ int main(int argc, char* argv[]) {
 	LV ed_obj;
 	ed_obj.init(error, 3*error, ED_GLOBAL, 2, 3, 1);
 
+	// 按批次读取输入，直到遇到结束标记。
 	do {
 		//clear past result
 //		strncpy(read, init_all_NULL, 128);
@@ -94,6 +95,7 @@ int main(int argc, char* argv[]) {
 
 		times(&start_time);
 
+		// 对当前批次的每一对序列执行 affine gap 标量基线算法。
 		for (read_idx = 0; read_idx < read_size; read_idx++) {
 
 			length = read_strs[read_idx].length();

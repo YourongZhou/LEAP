@@ -1,14 +1,15 @@
 /*
- * vector_ed.c
+ * shift.c
  *
- *  Created on: Nov 8, 2013
- *      Author: hxin
+ * SSE / AVX 位移辅助函数实现。这里的位移不是简单的寄存器内移位，
+ * 而是要同时处理 64 bit / 128 bit 子块之间的进位拼接。
  */
 
 #include "shift.h"
 #include <stdio.h>
 #include <string.h>
 
+// 对 128 bit 数据做跨 64 bit 子块的右移。
 __m128i shift_right_sse(__m128i vec, int shift_num) {
 	if (shift_num >= 64) {
 		vec = _mm_slli_si128(vec, 8);
@@ -20,6 +21,7 @@ __m128i shift_right_sse(__m128i vec, int shift_num) {
 	return _mm_or_si128(vec, carryover);
 }
 
+// 对 128 bit 数据做跨 64 bit 子块的左移。
 __m128i shift_left_sse(__m128i vec, int shift_num) {
 	if (shift_num >= 64) {
 		vec = _mm_srli_si128(vec, 8);
@@ -31,6 +33,7 @@ __m128i shift_left_sse(__m128i vec, int shift_num) {
 	return _mm_or_si128(vec, carryover);
 }
 
+// 对 256 bit 数据做跨 64 bit / 128 bit 子块的右移。
 __m256i shift_right_avx(__m256i vec, int shift_num) {
 	if (shift_num >= 128) {
 		vec = _mm256_inserti128_si256(_mm256_setzero_si256(), _mm256_extracti128_si256(vec, 0), 1);
@@ -46,6 +49,7 @@ __m256i shift_right_avx(__m256i vec, int shift_num) {
 	return _mm256_or_si256(vec, carryover);
 }
 
+// 对 256 bit 数据做跨 64 bit / 128 bit 子块的左移。
 __m256i shift_left_avx(__m256i vec, int shift_num) {
 	if (shift_num >= 128) {
 		vec = _mm256_inserti128_si256(_mm256_setzero_si256(), _mm256_extracti128_si256(vec, 1), 0);
@@ -60,4 +64,3 @@ __m256i shift_left_avx(__m256i vec, int shift_num) {
 	vec = _mm256_srli_epi64(vec, shift_num);
 	return _mm256_or_si256(vec, carryover);
 }
-

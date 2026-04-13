@@ -1,8 +1,10 @@
 /*
- * vector_filterMain.c
+ * vectorSHD_ED.cc
  *
- *  Created on: Nov 12, 2013
- *      Author: hxin
+ * 主 SIMD 驱动程序。它支持：
+ * 1. Levenshtein / affine gap 两种模式
+ * 2. SHD 预过滤显式开关
+ * 3. 字符串输入或预编码输入路径
  */
 
 //#ifndef BOOST_PP_IS_ITERATING
@@ -100,6 +102,7 @@ int main(int argc, char* argv[]) {
 	//ed_obj.init_levenshtein(error, ED_LOCAL, false);
     //ed_obj.init_affine(error, error * 3, ED_GLOBAL, 2, 3, 1, true);
 
+	// 按批次读取输入，并在读取阶段直接完成可复用的 bit-plane 编码。
 	do {
 		//clear past result
 //		strncpy(read, init_all_NULL, 128);
@@ -141,6 +144,7 @@ int main(int argc, char* argv[]) {
 
 		times(&start_time);
 
+		// 对当前批次执行 SIMD 搜索，并统计通过结果。
 		for (read_idx = 0; read_idx < read_size; read_idx++) {
 			
 			//int length_t = read_strs[read_idx].length();

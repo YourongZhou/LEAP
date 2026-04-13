@@ -1,8 +1,8 @@
 /*
  * bit_convert.c
  *
- *  Created on: Nov 7, 2013
- *      Author: hxin
+ * 字符序列到 bit-plane 的编码实现。编码后的布局会被 SIMD_ED、SHD 和 RefDB
+ * 直接复用，因此这里的重排顺序与后续 AVX / SSE 访问模式严格对应。
  */
 
 #include "print.h"
@@ -11,7 +11,7 @@
 #include <x86intrin.h>
 
 #ifndef __clang__
-// This is here only because gcc lacks some intrinsics!!
+// 兼容旧版 GCC：补齐缺失的 AVX 载入 / 存储辅助接口。
 __m256i _mm256_loadu2_m128i(__m128i* hi, __m128i* lo) {
 	__m128i lo_reg = _mm_loadu_si128(lo);
 	__m128i hi_reg = _mm_loadu_si128(hi);
@@ -24,7 +24,7 @@ void _mm256_storeu2_m128i(__m128i* hi, __m128i* lo, __m256i target) {
 	_mm_storeu_si128(hi, hi_reg);
 	_mm_storeu_si128(lo, lo_reg);
 }
-// This is here only because gcc lacks some intrinsics!!
+// 兼容旧版 GCC：补齐缺失的 AVX 载入 / 存储辅助接口。
 #endif 
 
 char MASK_A[32] __aligned__ = {
@@ -55,6 +55,7 @@ char MASK_T[32] __aligned__ = {
 		'T', 'T', 'T', 'T', 'T', 'T', 'T', 'T'
 	};
 
+// 朴素 2 bit 编码版本，主要用于简单场景或对照验证。
 void c_convert2bit(char *str, int length, uint8_t *bits) {
 	int i;
 	int j;
@@ -110,7 +111,7 @@ uint8_t BASE_SHIFT2[32] __aligned__ = {
 	0, 1, 8, 9, 4, 5, 12, 13, 2, 3, 10, 11, 6, 7, 14, 15
 	};
 
-//Have to consider Intel's endians
+// 需要考虑 Intel 小端布局下 bit 在字节中的实际摆放顺序。
 uint8_t LOC_MASK_SSE[128] = { 0x01, 0x01, 0x01, 0x01, //1
 		0x01, 0x01, 0x01, 0x01, //1
 		0x01, 0x01, 0x01, 0x01, //1
@@ -212,6 +213,7 @@ uint8_t LOC_MASK_AVX[256] = {
 		0x80, 0x80, 0x80, 0x80  //8
 		};
 
+// 把最多 128 bp 的字符序列编码为两个 SSE bit-plane。
 void sse_convert2bit(char *str, uint8_t *bits0, uint8_t *bits1) {
 
 	__m128i *shift_hint = (__m128i *) BASE_SHIFT1;
@@ -335,6 +337,7 @@ void sse_convert2bit(char *str, uint8_t *bits0, uint8_t *bits1) {
 	}
 }
 
+// 把最多 256 bp 的字符序列编码为两个 AVX bit-plane。
 void avx_convert2bit(char *str, uint8_t *bits0, uint8_t *bits1) {
 
 	__m256i *shift_hint = (__m256i *) BASE_SHIFT1;
@@ -478,4 +481,3 @@ void avx_convert2bit(char *str, uint8_t *bits0, uint8_t *bits1) {
 
 	}
 }
-

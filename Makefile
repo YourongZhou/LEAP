@@ -1,3 +1,4 @@
+# 顶层构建脚本。默认目标主要覆盖项目自有核心代码与测试驱动程序。
 EXECUTABLE = popcount bit_convert vectorED testNW testLV testLV_BAG vectorSHD_ED testRefDB# countPassFilter vector_filter string_cp shift test_SIMD_ED vectorED vectorLV sse.o diffED #ssse3_popcount test_modifier
 
 CXX = g++-5
@@ -30,6 +31,7 @@ endif
 
 #CFLAGS = -O3 -march=native -P -E
 
+# 构建常用的可执行程序集合。
 all: $(EXECUTABLE)
 
 LV_BAG.o: LV_BAG.cc LV_BAG.h
