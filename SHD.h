@@ -8,12 +8,9 @@
 #ifndef VECTOR_FILTER_H_
 #define VECTOR_FILTER_H_
 
-#ifndef __aligned__
-#define __aligned__ __attribute__((aligned(16)))
-#endif
-
 #include <stdint.h>
 #include <x86intrin.h>
+#include "leap_compat.h"
 
 // 直接基于 read / ref bit-plane 的 SSE 过滤接口。
 int bit_vec_filter_sse(__m128i read_XMM0, __m128i read_XMM1,

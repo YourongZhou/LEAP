@@ -1,0 +1,13 @@
+name: leap
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python
+  - gcc_linux-64
+  - gxx_linux-64
+  - make
+  - cmake
+  - zlib
+  - parasail

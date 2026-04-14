@@ -58,9 +58,9 @@ void RefDB::init_generate() {
 
 // 把一条 reference 编码为双 bit-plane 并追加到临时文件中。
 void RefDB::add_chromo(char *chromo_string, uint64_t length) {
-	char aligned_buff [AVX_BIT_LENGTH] __aligned__;
-	uint8_t bit0_buff [AVX_BYTE_LENGTH] __aligned__;
-	uint8_t bit1_buff [AVX_BYTE_LENGTH] __aligned__;
+	LEAP_ALIGNAS(32) char aligned_buff[AVX_BIT_LENGTH];
+	LEAP_ALIGNAS(32) uint8_t bit0_buff[AVX_BYTE_LENGTH];
+	LEAP_ALIGNAS(32) uint8_t bit1_buff[AVX_BYTE_LENGTH];
 
 	uint64_t byte_length = (length - 1) / 8 + 1;
 

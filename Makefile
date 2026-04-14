@@ -1,11 +1,18 @@
-# 顶层构建脚本。默认目标主要覆盖项目自有核心代码与测试驱动程序。
-EXECUTABLE = popcount bit_convert vectorED testNW testLV testLV_BAG vectorSHD_ED testRefDB# countPassFilter vector_filter string_cp shift test_SIMD_ED vectorED vectorLV sse.o diffED #ssse3_popcount test_modifier
+# Top-level build for the LEAP core binaries.
 
-CXX = g++-5
+CONDA_GCC := $(firstword $(wildcard $(CONDA_PREFIX)/bin/*-gcc))
+CONDA_GXX := $(firstword $(wildcard $(CONDA_PREFIX)/bin/*-g++))
 
-LD = ld
+CC ?= $(if $(CONDA_GCC),$(CONDA_GCC),gcc)
+CXX ?= $(if $(CONDA_GXX),$(CONDA_GXX),g++)
+LD ?= ld
 
-LDFLAGS = -r
+OPT_FLAGS ?= -O3
+STD_FLAGS ?= --std=c++11
+ISA_FLAGS ?= -mbmi -mavx2 -msse4.2
+WARN_FLAGS ?= -fpermissive
+LD_RFLAGS ?= -r
+USE_PARASAIL ?= 0
 
 NW_PATH = ./needleman_wunsch-0.3.5
 LIBS_PATH = $(NW_PATH)/libs
@@ -14,107 +21,116 @@ STRING_BUF_PATH := $(LIBS_PATH)/string_buffer
 BIOINF_LIB_PATH := $(LIBS_PATH)/bioinf
 SCORING_PATH := $(LIBS_PATH)/alignment_scoring
 
-#CFLAGS = -g --std=c++11 -mbmi -mavx2 -msse4.2 -I . -Ddebug \
-#CFLAGS = -O3 --std=c++11 -mbmi -mavx2 -msse4.2 -I . -DNO_BIT_VEC\
+CPPFLAGS += -I . \
+	-I $(UTILITY_LIB_PATH) \
+	-I $(STRING_BUF_PATH) \
+	-I $(BIOINF_LIB_PATH) \
+	-I $(SCORING_PATH) \
+	-I $(NW_PATH) \
+	-DCOMPILE_TIME='"$(shell date)"' \
+	-DSCORE_TYPE='int'
 
-CFLAGS = -O3 --std=c++11 -mbmi -mavx2 -msse4.2 -I . \
-         -I $(UTILITY_LIB_PATH) \
-         -I $(STRING_BUF_PATH) -I $(BIOINF_LIB_PATH) -I $(SCORING_PATH) \
-         -I $(NW_PATH) -DCOMPILE_TIME='"$(shell date)"' -DSCORE_TYPE='int' \
-         -fpermissive
-UNAME_S := $(shell uname -s)
-ifeq ($(UNAME_S),Linux)
+ifeq ($(origin CONDA_PREFIX),environment)
+CPPFLAGS += -I$(CONDA_PREFIX)/include
+LDFLAGS += -L$(CONDA_PREFIX)/lib
 endif
-ifeq ($(UNAME_S),Darwin)
-	CFLAGS += -I/opt/local/include
+
+CXXFLAGS += $(OPT_FLAGS) $(STD_FLAGS) $(ISA_FLAGS) $(WARN_FLAGS)
+
+CORE_EXECUTABLES = popcount bit_convert vectorED testLV testLV_BAG vectorSHD_ED testRefDB
+PARASAIL_EXECUTABLES = testNW
+EXECUTABLES = $(CORE_EXECUTABLES)
+
+ifeq ($(USE_PARASAIL),1)
+EXECUTABLES += $(PARASAIL_EXECUTABLES)
+PARASAIL_LDLIBS = -lparasail
 endif
 
-#CFLAGS = -O3 -march=native -P -E
+all: $(EXECUTABLES)
 
-# 构建常用的可执行程序集合。
-all: $(EXECUTABLE)
+smoke: testLV testLV_BAG vectorSHD_ED testRefDB vectorED
 
 LV_BAG.o: LV_BAG.cc LV_BAG.h
-	$(CXX) -O3 -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
 LV.o: LV.cc LV.h
-	$(CXX) -O3 -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
 SIMD_ED.o: SIMD_ED.cc SIMD_ED.h
-	$(CXX) $(CFLAGS) -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
 print.o: print.c print.h
-	$(CXX) $(CFLAGS) -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
 popcount.o: popcount.c popcount.h
-	$(CXX) $(CFLAGS) -c $< -o $@
-	
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+
 popcount: popcount.o print.o popcountMain.c
-	$(CXX) $(CFLAGS) $^ -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $^ -o $@
 
 bit_convert.o: bit_convert.c bit_convert.h
-	$(CXX) $(CFLAGS) -c $< -o $@
-	
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+
 bit_convert: print.o bit_convert.o bit_convertMain.c
-	$(CXX) $(CFLAGS) $^ -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $^ -o $@
 
 shift.o: shift.c shift.h
-	$(CXX) $(CFLAGS) -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
 SHD.o: SHD.cc SHD.h
-	$(CXX) $(CFLAGS) -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
 mask.o: mask.c mask.h
-	$(CXX) $(CFLAGS) -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
 sse.o: mask.o print.o bit_convert.o popcount.o vector_filter.o
-	$(LD) $(LDFLAGS) $^ -o $@
+	$(LD) $(LD_RFLAGS) $^ -o $@
 
 vector_filter: mask.o print.o bit_convert.o popcount.o vector_filter.o vector_filterMain.c
-	$(CXX) $(CFLAGS) $^ -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $^ -o $@
 
 countPassFilter: mask.o print.o bit_convert.o popcount.o vector_filter.o countPassFilter.cc
-	$(CXX) $(CFLAGS) $^ -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $^ -o $@
 
 timeSSE: timeSSE.c
-	$(CXX) $(CFLAGS) $< -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
-needleman_wunsch.o: $(NW_PATH)/needleman_wunsch.c $(NW_PATH)/needleman_wunsch.h 
-	$(CXX) $(CFLAGS) -c $< -o $@
+needleman_wunsch.o: $(NW_PATH)/needleman_wunsch.c $(NW_PATH)/needleman_wunsch.h
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
-vectorED: SIMD_ED.o print.o bit_convert.o vectorED.cc shift.o SHD.o mask.o popcount.o needleman_wunsch.o $(wildcard $(SCORING_PATH)/*.c) $(UTILITY_LIB_PATH)/utility_lib.c $(BIOINF_LIB_PATH)/bioinf.c $(STRING_BUF_PATH)/string_buffer.c $(NW_PATH)/nw_cmdline.c 
-	$(CXX) $(CFLAGS) $^ -o $@ -lz 
+vectorED: SIMD_ED.o print.o bit_convert.o vectorED.cc shift.o SHD.o mask.o popcount.o needleman_wunsch.o $(wildcard $(SCORING_PATH)/*.c) $(UTILITY_LIB_PATH)/utility_lib.c $(BIOINF_LIB_PATH)/bioinf.c $(STRING_BUF_PATH)/string_buffer.c $(NW_PATH)/nw_cmdline.c
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $^ -o $@ $(LDFLAGS) -lz
 
-testNW: SIMD_ED.o print.o bit_convert.o testNW.cc shift.o SHD.o mask.o popcount.o needleman_wunsch.o $(wildcard $(SCORING_PATH)/*.c) $(UTILITY_LIB_PATH)/utility_lib.c $(BIOINF_LIB_PATH)/bioinf.c $(STRING_BUF_PATH)/string_buffer.c $(NW_PATH)/nw_cmdline.c 
-	$(CXX) $(CFLAGS) $^ -o $@ -L/usr/local/lib -lz -lparasail
+testNW: SIMD_ED.o print.o bit_convert.o testNW.cc shift.o SHD.o mask.o popcount.o needleman_wunsch.o $(wildcard $(SCORING_PATH)/*.c) $(UTILITY_LIB_PATH)/utility_lib.c $(BIOINF_LIB_PATH)/bioinf.c $(STRING_BUF_PATH)/string_buffer.c $(NW_PATH)/nw_cmdline.c
+ifeq ($(USE_PARASAIL),1)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $^ -o $@ $(LDFLAGS) -lz $(PARASAIL_LDLIBS)
+else
+	@echo "testNW requires USE_PARASAIL=1 and libparasail." >&2
+	@false
+endif
 
 testLV: LV.o testLV.cc
-	$(CXX) -O3 $^ -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $^ -o $@
 
 testLV_BAG: LV_BAG.o testLV_BAG.cc
-	$(CXX) -O3 $^ -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $^ -o $@
 
 vectorSHD_ED: SIMD_ED.o SHD.o mask.o print.o bit_convert.o shift.o popcount.o vectorSHD_ED.cc
-	$(CXX) $(CFLAGS) $^ -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $^ -o $@
 
 test_SIMD_ED: SIMD_ED.o vector_filter.o bit_convert.o mask.o popcount.o print.o test_ED.cc
-	$(CXX) $(CFLAGS) $^ -o $@
-		
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $^ -o $@
+
 diffED: LV.o SIMD_ED.o mask.o print.o bit_convert.o popcount.o vector_filter.o diffED.cc
-	$(CXX) $(CFLAGS) $^ -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $^ -o $@
 
 RefDB.o: RefDB.cc RefDB.h
-	$(CXX) $(CFLAGS) -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
 testRefDB: RefDB.o bit_convert.o shift.o print.o RefDBMain.cc
-	$(CXX) $(CFLAGS) $^ -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $^ -o $@
 
-#ssse3_popcount: ssse3_popcount.c
-#	$(CXX) $(CFLAGS) $< -o $@
-	
-
-	
-.PHONY : clean
+.PHONY: all clean smoke
 
 clean:
-	rm -f $(EXECUTABLE) *.o
+	rm -f $(CORE_EXECUTABLES) $(PARASAIL_EXECUTABLES) *.o

@@ -70,7 +70,7 @@ int main(int argc, char* argv[]) {
 
 	int error = atoi(argv[1]);
 
-	size_t lineLength;	
+	size_t lineLength = 0;
 	char* tempstr = NULL;
 
 	long long unsigned int passNum = 0;
@@ -111,11 +111,16 @@ int main(int argc, char* argv[]) {
 		for (read_size = 0; read_size < BATCH_RUN; read_size++) {
 			
 			//get read
-			getline(&tempstr, &lineLength, stdin);
-			int length_t = strlen(tempstr) - 1;
+			ssize_t read_len = getline(&tempstr, &lineLength, stdin);
+			if (read_len < 0) {
+				stop = true;
+				break;
+			}
+			int length_t = (int) read_len;
+			if (length_t > 0 && tempstr[length_t - 1] == '\n') {
+				tempstr[--length_t] = '\0';
+			}
 			length[read_size] = length_t; 
-			//Get rid of the new line character
-			tempstr[length_t] = '\0';
 			
 			if (strcmp(tempstr, "end_of_file\0") == 0) {
 				stop = true;
@@ -124,11 +129,15 @@ int main(int argc, char* argv[]) {
 			read_strs[read_size].assign(tempstr);
 
 			//get ref
-			getline(&tempstr, &lineLength, stdin);
-			length_t = strlen(tempstr) - 1;
-			//length[read_size] = length_t;
-			//Get rid of the new line character
-			tempstr[length_t] = '\0';
+			read_len = getline(&tempstr, &lineLength, stdin);
+			if (read_len < 0) {
+				stop = true;
+				break;
+			}
+			length_t = (int) read_len;
+			if (length_t > 0 && tempstr[length_t - 1] == '\n') {
+				tempstr[--length_t] = '\0';
+			}
 			ref_strs[read_size].assign(tempstr);
 			valid_buff[read_size] = false;
 
@@ -189,7 +198,7 @@ int main(int argc, char* argv[]) {
 
 				//valid_buff[read_idx] = true; }
 				//ed_obj.load_reads((char*) read_strs[read_idx].c_str(), (char*) ref_strs[read_idx].c_str(), length_t);
-			ed_obj.load_reads(read0[read_idx], read1[read_idx], ref0[read_idx], ref1[read_idx], length_t);
+			ed_obj.load_reads((char*) read_strs[read_idx].c_str(), (char*) ref_strs[read_idx].c_str(), length_t);
 			ed_obj.calculate_masks();
 			ed_obj.reset();
 			ed_obj.run();

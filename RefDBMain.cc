@@ -34,9 +34,9 @@ int main() {
 	print256_bit(bit0);
 	print256_bit(bit1);
 
-	char str_buffer [256] __aligned__;
-	uint8_t bit0_buffer [32] __aligned__;
-	uint8_t bit1_buffer [32] __aligned__;
+	LEAP_ALIGNAS(32) char str_buffer[256];
+	LEAP_ALIGNAS(32) uint8_t bit0_buffer[32];
+	LEAP_ALIGNAS(32) uint8_t bit1_buffer[32];
 
 	memcpy(str_buffer, chromo2 + 13, 256);
 	avx_convert2bit(str_buffer, bit0_buffer, bit1_buffer);

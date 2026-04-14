@@ -12,7 +12,7 @@
 #include <assert.h>
 #endif
 
-uint8_t POPCOUNT[32] __aligned__ = {
+LEAP_ALIGNAS(32) uint8_t POPCOUNT[32] = {
 /* 0 */0,
 /* 1 */1,
 /* 2 */1,
@@ -46,7 +46,7 @@ uint8_t POPCOUNT[32] __aligned__ = {
 /* e */3,
 /* f */4 };
 
-uint8_t POPCOUNT_SHD[32] __aligned__ = {
+LEAP_ALIGNAS(32) uint8_t POPCOUNT_SHD[32] = {
 /* 0 */0,
 /* 1 */1,
 /* 2 */1,
@@ -81,7 +81,7 @@ uint8_t POPCOUNT_SHD[32] __aligned__ = {
 /* f */1 };
 
 
-uint8_t __MASK_0F_[32] __aligned__ = {
+LEAP_ALIGNAS(32) uint8_t __MASK_0F_[32] = {
 			0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf,
 			0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 
 			0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf,
@@ -253,4 +253,3 @@ uint32_t popcount(uint8_t *buffer, int chunks16) {
 
 	return result;
 }
-

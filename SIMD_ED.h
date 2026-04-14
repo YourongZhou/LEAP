@@ -11,6 +11,7 @@
 #include <string>
 #include <cstdlib>
 #include "print.h"
+#include "leap_compat.h"
 #include "shift.h"
 #include "bit_convert.h"
 
@@ -134,13 +135,13 @@ private:
 	// 当前输入缓存。
 	int buffer_length;
 	
-	char A[_MAX_LENGTH_] __aligned__;
-	char B[_MAX_LENGTH_] __aligned__;
+	LEAP_ALIGNAS(32) char A[_MAX_LENGTH_];
+	LEAP_ALIGNAS(32) char B[_MAX_LENGTH_];
 
-	uint8_t A_bit0_t[_MAX_LENGTH_ / 4] __aligned__;
-	uint8_t A_bit1_t[_MAX_LENGTH_ / 4] __aligned__;
-	uint8_t B_bit0_t[_MAX_LENGTH_ / 4] __aligned__;
-	uint8_t B_bit1_t[_MAX_LENGTH_ / 4] __aligned__;
+	LEAP_ALIGNAS(32) uint8_t A_bit0_t[_MAX_LENGTH_ / 4];
+	LEAP_ALIGNAS(32) uint8_t A_bit1_t[_MAX_LENGTH_ / 4];
+	LEAP_ALIGNAS(32) uint8_t B_bit0_t[_MAX_LENGTH_ / 4];
+	LEAP_ALIGNAS(32) uint8_t B_bit1_t[_MAX_LENGTH_ / 4];
 
 };
 

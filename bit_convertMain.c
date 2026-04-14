@@ -17,14 +17,14 @@ char* functions[OPT_COUNT] = { "verify", "serial", "sse", "avx" };
 
 #define _MAX_LENGTH_ 256
 
-char read_t[_MAX_LENGTH_] __aligned__;
+LEAP_ALIGNAS(32) char read_t[_MAX_LENGTH_];
 
-uint8_t read_bit_t[_MAX_LENGTH_ / 4] __aligned__;
-uint8_t ref_bit_t[_MAX_LENGTH_ / 4] __aligned__;
-uint8_t read_bit0_t[_MAX_LENGTH_ / 8] __aligned__;
-uint8_t read_bit1_t[_MAX_LENGTH_ / 8] __aligned__;
-uint8_t ref_bit0_t[_MAX_LENGTH_ / 8] __aligned__;
-uint8_t ref_bit1_t[_MAX_LENGTH_ / 8] __aligned__;
+LEAP_ALIGNAS(32) uint8_t read_bit_t[_MAX_LENGTH_ / 4];
+LEAP_ALIGNAS(32) uint8_t ref_bit_t[_MAX_LENGTH_ / 4];
+LEAP_ALIGNAS(32) uint8_t read_bit0_t[_MAX_LENGTH_ / 8];
+LEAP_ALIGNAS(32) uint8_t read_bit1_t[_MAX_LENGTH_ / 8];
+LEAP_ALIGNAS(32) uint8_t ref_bit0_t[_MAX_LENGTH_ / 8];
+LEAP_ALIGNAS(32) uint8_t ref_bit1_t[_MAX_LENGTH_ / 8];
 
 void help(const char* progname) {
 	int i;
@@ -286,4 +286,3 @@ int main(int argc, char* argv[]) {
 }
 
 // eof
-

@@ -62,7 +62,8 @@ int main(int argc, char* argv[]) {
         ref1[i] = new uint8_t[_MAX_LENGTH_ / 8];
     }
 */
-    char* seq1 = NULL, *seq2 = NULL;
+    const char* seq1 = NULL;
+    const char* seq2 = NULL;
     int algo_choose = 0; // default skipED
     if (argc < 2) {
         printf("Usage: $>bin error [NW(1) or skipED(0)]\n");
@@ -86,7 +87,7 @@ int main(int argc, char* argv[]) {
     }
     // ignore rest of arguments if existant
 
-    size_t lineLength;
+    size_t lineLength = 0;
     char* tempstr = NULL;
 
     long long unsigned int passNum = 0;
@@ -124,11 +125,15 @@ int main(int argc, char* argv[]) {
         for (read_size = 0; read_size < BATCH_RUN; read_size++) {
 
             //get read
-            getline(&tempstr, &lineLength, stdin);
-            int length = strlen(tempstr) - 1;
-            //length[read_size] = strlen(tempstr) - 1;
-            //Get rid of the new line character
-            tempstr[length] = '\0';
+            ssize_t read_len = getline(&tempstr, &lineLength, stdin);
+            if (read_len < 0) {
+                stop = true;
+                break;
+            }
+            int length = (int) read_len;
+            if (length > 0 && tempstr[length - 1] == '\n') {
+                tempstr[--length] = '\0';
+            }
 
             if (strcmp(tempstr, "end_of_file\0") == 0) {
                 stop = true;
@@ -137,11 +142,15 @@ int main(int argc, char* argv[]) {
             read_strs[read_size].assign(tempstr);
 
             //get ref
-            getline(&tempstr, &lineLength, stdin);
-            length = strlen(tempstr) - 1;
-            //length[read_size] = strlen(tempstr) - 1;
-            //Get rid of the new line character
-            tempstr[length] = '\0';
+            read_len = getline(&tempstr, &lineLength, stdin);
+            if (read_len < 0) {
+                stop = true;
+                break;
+            }
+            length = (int) read_len;
+            if (length > 0 && tempstr[length - 1] == '\n') {
+                tempstr[--length] = '\0';
+            }
             ref_strs[read_size].assign(tempstr);
             valid_buff[read_size] = false;
 
@@ -198,14 +207,13 @@ int main(int argc, char* argv[]) {
 
             // 使用 Parasail 的 banded Needleman-Wunsch。
             else if (algo_choose == 1) {
-                seq1 = (const char*)read_strs[read_idx].c_str();
-                seq2 = (const char*)ref_strs[read_idx].c_str();
+                seq1 = read_strs[read_idx].c_str();
+                seq2 = ref_strs[read_idx].c_str();
                 const parasail_matrix_t *user_matrix = parasail_matrix_create("ACGT", 0, -2);
                 parasail_result_t* parasail_result;
-                //parasail_result = parasail_nw_striped_sse41_128_16(seq1, (const int)read_strs[read_idx].length(), seq2, (const int)ref_strs[read_idx].length(), -3, -1, user_matrix);
-                parasail_result = parasail_nw_banded(seq1, (const int)read_strs[read_idx].length(), seq2, (const int)ref_strs[read_idx].length(), -3, -1, 0, user_matrix);
+                parasail_result = parasail_nw_banded(seq1, (const int)read_strs[read_idx].length(), seq2, (const int)ref_strs[read_idx].length(), 3, 1, error, user_matrix);
 
-                if (parasail_result->score >= (error * 2)) {
+                if (parasail_result->score >= -(error * 2)) {
                     valid_buff[read_idx] = true;
                 }
                 //printf("%d ", parasail_result->score);
@@ -214,12 +222,11 @@ int main(int argc, char* argv[]) {
 
             // 使用 Parasail 的 SIMD Needleman-Wunsch。
             else if (algo_choose == 2) {
-                seq1 = (const char*)read_strs[read_idx].c_str();
-                seq2 = (const char*)ref_strs[read_idx].c_str();
+                seq1 = read_strs[read_idx].c_str();
+                seq2 = ref_strs[read_idx].c_str();
                 const parasail_matrix_t *user_matrix = parasail_matrix_create("ACGT", 0, -2);
                 parasail_result_t* parasail_result;
-                parasail_result = parasail_nw_striped_sse41_128_16(seq1, (const int)read_strs[read_idx].length(), seq2, (const int)ref_strs[read_idx].length(), -3, -1, user_matrix);
-                // parasail_result = parasail_nw_banded(seq1, (const int)read_strs[read_idx].length(), seq2, (const int)ref_strs[read_idx].length(), -3, -1, 0, user_matrix);
+                parasail_result = parasail_nw_striped_sse41_128_16(seq1, (const int)read_strs[read_idx].length(), seq2, (const int)ref_strs[read_idx].length(), 3, 1, user_matrix);
 
                 if (parasail_result->score >= -(error * 2)) {
                     valid_buff[read_idx] = true;

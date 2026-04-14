@@ -41,7 +41,7 @@ int main(int argc, char* argv[]) {
 
 	int error = atoi(argv[1]);
 
-	size_t lineLength;	
+	size_t lineLength = 0;
 	size_t length;
 	char* tempstr = NULL;
 
@@ -73,10 +73,15 @@ int main(int argc, char* argv[]) {
 		for (read_size = 0; read_size < BATCH_RUN; read_size++) {
 			
 			//get read
-			getline(&tempstr, &lineLength, stdin);
-			length = strlen(tempstr);
-			//Get rid of the new line character
-			tempstr[length - 1] = '\0';
+			ssize_t read_len = getline(&tempstr, &lineLength, stdin);
+			if (read_len < 0) {
+				stop = true;
+				break;
+			}
+			length = (size_t)read_len;
+			if (length > 0 && tempstr[length - 1] == '\n') {
+				tempstr[--length] = '\0';
+			}
 			
 			if (strcmp(tempstr, "end_of_file\0") == 0) {
 				stop = true;
@@ -85,10 +90,15 @@ int main(int argc, char* argv[]) {
 			read_strs[read_size].assign(tempstr);
 
 			//get ref
-			getline(&tempstr, &lineLength, stdin);
-			length = strlen(tempstr);
-			//Get rid of the new line character
-			tempstr[length - 1] = '\0';
+			read_len = getline(&tempstr, &lineLength, stdin);
+			if (read_len < 0) {
+				stop = true;
+				break;
+			}
+			length = (size_t)read_len;
+			if (length > 0 && tempstr[length - 1] == '\n') {
+				tempstr[--length] = '\0';
+			}
 			ref_strs[read_size].assign(tempstr);
 			valid_buff[read_size] = false;
 		}

@@ -27,28 +27,28 @@ void _mm256_storeu2_m128i(__m128i* hi, __m128i* lo, __m256i target) {
 // 兼容旧版 GCC：补齐缺失的 AVX 载入 / 存储辅助接口。
 #endif 
 
-char MASK_A[32] __aligned__ = {
+LEAP_ALIGNAS(32) char MASK_A[32] = {
 		'A', 'A', 'A', 'A', 'A', 'A', 'A', 'A',
 		'A', 'A', 'A', 'A', 'A', 'A', 'A', 'A',
 		'A', 'A', 'A', 'A', 'A', 'A', 'A', 'A',
 		'A', 'A', 'A', 'A', 'A', 'A', 'A', 'A'
 	};
 
-char MASK_C[32] __aligned__ = {
+LEAP_ALIGNAS(32) char MASK_C[32] = {
 		'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
 		'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
 		'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
 		'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C'
 	};
 
-char MASK_G[32] __aligned__ = {
+LEAP_ALIGNAS(32) char MASK_G[32] = {
 		'G', 'G', 'G', 'G', 'G', 'G', 'G', 'G',
 		'G', 'G', 'G', 'G', 'G', 'G', 'G', 'G',
 		'G', 'G', 'G', 'G', 'G', 'G', 'G', 'G',
 		'G', 'G', 'G', 'G', 'G', 'G', 'G', 'G'
 	};
 
-char MASK_T[32] __aligned__ = {
+LEAP_ALIGNAS(32) char MASK_T[32] = {
 		'T', 'T', 'T', 'T', 'T', 'T', 'T', 'T',
 		'T', 'T', 'T', 'T', 'T', 'T', 'T', 'T',
 		'T', 'T', 'T', 'T', 'T', 'T', 'T', 'T',
@@ -94,19 +94,19 @@ void c_convert2bit(char *str, int length, uint8_t *bits) {
 	}
 }
 
-uint8_t BIT_FF[32] __aligned__ = {
+LEAP_ALIGNAS(32) uint8_t BIT_FF[32] = {
 	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
 	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
 	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
 	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff
 	};
 
-uint8_t BASE_SHIFT1[32] __aligned__ = {
+LEAP_ALIGNAS(32) uint8_t BASE_SHIFT1[32] = {
 	0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15,
 	0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15
 	};
 
-uint8_t BASE_SHIFT2[32] __aligned__ = {
+LEAP_ALIGNAS(32) uint8_t BASE_SHIFT2[32] = {
 	0, 1, 8, 9, 4, 5, 12, 13, 2, 3, 10, 11, 6, 7, 14, 15,
 	0, 1, 8, 9, 4, 5, 12, 13, 2, 3, 10, 11, 6, 7, 14, 15
 	};

@@ -103,9 +103,17 @@ Levenshtein 和 affine gap 两套实现都围绕对角线 lane 展开：
 
 ## 构建
 
-项目使用顶层 `Makefile` 构建。
+项目使用顶层 `Makefile` 构建。推荐先创建并激活仓库附带的 conda 环境：
 
 ```bash
+conda env create -f environment.yml
+conda activate leap
+```
+
+激活后，Makefile 会优先使用环境内的编译器工具链。
+
+```bash
+make smoke
 make testLV
 make testLV_BAG
 make vectorSHD_ED
@@ -115,9 +123,10 @@ make testRefDB
 
 说明：
 
-- 当前 Makefile 默认使用 `g++-5`
-- SIMD 编译选项假定机器支持 BMI、AVX2 和 SSE4.2
-- 某些目标依赖外部库，例如 `zlib` 与 `parasail`
+- 默认构建目标不再依赖 `g++-5`
+- Makefile 支持通过 `CC`、`CXX`、`OPT_FLAGS`、`ISA_FLAGS` 和 `USE_PARASAIL` 覆盖默认配置
+- SIMD 编译选项默认假定机器支持 BMI、AVX2 和 SSE4.2
+- `testNW` 需要显式启用 Parasail：`make testNW USE_PARASAIL=1`
 - Bowtie2 目录属于单独的集成实验，不走顶层默认构建流程
 
 ## 输入格式与运行方式
@@ -133,6 +142,61 @@ ACGTTCGT
 ACGT
 ACGT
 end_of_file
+```
+
+仓库另外提供了一个可复用的基础输入集：
+
+```bash
+testdata/smoke_input.txt
+```
+
+## 当前状态
+
+截至 2026-04-15，顶层核心构建已经迁移到现代 conda 工具链，当前可确认的状态如下：
+
+- `testLV`：可构建，可运行
+- `testLV_BAG`：可构建，可运行
+- `vectorED`：可构建，可运行
+- `testRefDB`：可构建，可运行
+- `testNW`：在 `USE_PARASAIL=1` 时可构建，可运行
+- `vectorSHD_ED`：可构建、可运行，但 Levenshtein 路径仍有正确性偏差，不能当成已验证结果
+
+目前已复现的一个明确差异是，在同一组 smoke 输入上：
+
+```bash
+./testLV 1 < testdata/smoke_input.txt
+# passNum: 5
+
+./vectorSHD_ED 1 1 1 < testdata/smoke_input.txt
+# passNum: 3
+```
+
+这说明当前待排查的问题在 SIMD Levenshtein 路径，而不是顶层构建本身。
+
+## 最小 Smoke Case
+
+如果只是想确认“环境、构建、最基本运行”是否正常，建议先跑这一组：
+
+```bash
+conda activate leap
+make smoke
+
+./testLV 1 < testdata/smoke_input.txt
+./vectorED 2 0 < testdata/smoke_input.txt
+./testRefDB
+```
+
+如果环境里装了 Parasail，再补一条：
+
+```bash
+make testNW USE_PARASAIL=1
+./testNW 2 1 < testdata/smoke_input.txt
+```
+
+如果你要复现当前已知问题，再跑：
+
+```bash
+./vectorSHD_ED 1 1 1 < testdata/smoke_input.txt
 ```
 
 ### 标量 Levenshtein 基线
@@ -152,6 +216,8 @@ end_of_file
 ```bash
 ./vectorSHD_ED 2 1 1 < input.txt
 ```
+
+注意：这个入口当前只能作为“构建和运行是否通”的检查，不能作为已经完成验证的 Levenshtein 基准。
 
 参数含义：
 
@@ -203,3 +269,14 @@ end_of_file
 
 本轮补充的注释和文档主要覆盖项目自有核心代码。第三方 vendored 目录为了避免无意义的大规模
 diff，保持基本原样。
+
+## TODO / Known Issues
+
+- `vectorSHD_ED` 的 SIMD Levenshtein 路径与标量 `testLV` 还不一致；在 `testdata/smoke_input.txt` 上当前是 `3/6` 对 `5/6`
+- `SIMD_ED` 的 Levenshtein correctness 还需要单独审计；`testNW 1 0 ...` 也会复现同类偏差
+- `vectorSHD_ED` 的预编码 / SHD 快路径还没有做系统回归，当前不应作为 ground truth
+- `needleman_wunsch-0.3.5/` 仍然是 vendored 老代码，现代编译器下还有不少 warning，没有做风格或结构清理
+- 还没有完成正式的性能基线记录；目前只确认“能跑”，没有完成“与旧版本吞吐持平”的量化证明
+- `-flto`、局部内存分配优化等低风险提速项还没开始做，需要在 correctness 固定后再评估
+- `bowtie2_augment/` 和 `bowtie2_skipED_augment/` 这两套集成实验目录这一轮没有迁移
+- 仓库当前会产生较多二进制和中间产物；清理规则和 `.gitignore` 还需要单独整理

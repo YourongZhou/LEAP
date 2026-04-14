@@ -10,6 +10,16 @@
 #include "SHD.h"
 #include <cassert>
 
+namespace {
+__m256i* alloc_aligned_masks(size_t count) {
+	void* ptr = NULL;
+	if (posix_memalign(&ptr, 32, count * sizeof(__m256i)) != 0 || ptr == NULL) {
+		throw bad_alloc();
+	}
+	return static_cast<__m256i*>(ptr);
+}
+}
+
 // 在指定 lane 上，从 start_pos 开始统计连续匹配长度。
 // 这里通过对 mismatch mask 做位移，然后利用 tzcnt 找到第一个不匹配位。
 int SIMD_ED::count_ID_length_avx(int lane_idx, int start_pos) {
@@ -21,7 +31,7 @@ int SIMD_ED::count_ID_length_avx(int lane_idx, int start_pos) {
 #endif
 
 	//unsigned long *byte_cast = (unsigned long*) &shifted_mask;
-	uint64_t byte_cast [_MAX_LENGTH_/64] __aligned__;
+	LEAP_ALIGNAS(32) uint64_t byte_cast[_MAX_LENGTH_/64];
 	_mm256_store_si256((__m256i*) byte_cast, shifted_mask); 
 
 
@@ -100,7 +110,7 @@ SIMD_ED::~SIMD_ED() {
 		else
 			delete [] cur_ED;
 
-		delete [] hamming_masks;
+		free(hamming_masks);
 
 		for (int i = 0; i < total_lanes; i++) {
 			delete [] start[i];
@@ -132,15 +142,17 @@ void SIMD_ED::convert_reads(char *read, char *ref, int length, uint8_t *A0, uint
 
 	//cout << "length: " << length << " ref: " << ref << endl;;
 
+	memset(A, 0, sizeof(A));
+	memset(B, 0, sizeof(B));
 	strncpy(A, read, length);
-	sse_convert2bit(A, A_bit0_t, A_bit1_t);
+	avx_convert2bit(A, A_bit0_t, A_bit1_t);
 	strncpy(B, ref, length);
-	sse_convert2bit(B, B_bit0_t, B_bit1_t);
+	avx_convert2bit(B, B_bit0_t, B_bit1_t);
 
-	memcpy(A0, A_bit0_t, (length - 1) / 8 + 1);
-	memcpy(A1, A_bit1_t, (length - 1) / 8 + 1);
-	memcpy(B0, B_bit0_t, (length - 1) / 8 + 1);
-	memcpy(B1, B_bit1_t, (length - 1) / 8 + 1);
+	memcpy(A0, A_bit0_t, _MAX_LENGTH_ / 8);
+	memcpy(A1, A_bit1_t, _MAX_LENGTH_ / 8);
+	memcpy(B0, B_bit0_t, _MAX_LENGTH_ / 8);
+	memcpy(B1, B_bit1_t, _MAX_LENGTH_ / 8);
 }
 
 // 直接加载字符形式输入，并在内部完成 AVX bit-plane 编码。
@@ -150,6 +162,8 @@ void SIMD_ED::load_reads(char *read, char *ref, int length) {
 	if (length > _MAX_LENGTH_)
 		length = _MAX_LENGTH_;
 
+	memset(A, 0, sizeof(A));
+	memset(B, 0, sizeof(B));
 	strncpy(A, read, length);
 	avx_convert2bit(A, A_bit0_t, A_bit1_t);
 	strncpy(B, ref, length);
@@ -162,15 +176,23 @@ void SIMD_ED::load_reads(char *read, char *ref, int length) {
 // 加载已经编码好的 bit-plane 输入。
 void SIMD_ED::load_reads(uint8_t *A0, uint8_t *A1, uint8_t *B0, uint8_t *B1, int length) {
 	buffer_length = length;
-	memcpy(A_bit0_t, A0, (length - 1) / 8 + 1);
-	memcpy(A_bit1_t, A1, (length - 1) / 8 + 1);
-	memcpy(B_bit0_t, B0, (length - 1) / 8 + 1);
-	memcpy(B_bit1_t, B1, (length - 1) / 8 + 1);
+	memset(A_bit0_t, 0, sizeof(A_bit0_t));
+	memset(A_bit1_t, 0, sizeof(A_bit1_t));
+	memset(B_bit0_t, 0, sizeof(B_bit0_t));
+	memset(B_bit1_t, 0, sizeof(B_bit1_t));
+	memcpy(A_bit0_t, A0, _MAX_LENGTH_ / 8);
+	memcpy(A_bit1_t, A1, _MAX_LENGTH_ / 8);
+	memcpy(B_bit0_t, B0, _MAX_LENGTH_ / 8);
+	memcpy(B_bit1_t, B1, _MAX_LENGTH_ / 8);
 }
 
 // 直接从 YMM 寄存器形式加载输入。
 void SIMD_ED::load_reads(__m256i A0, __m256i A1, __m256i B0, __m256i B1, int length) {
 	buffer_length = length;
+	memset(A_bit0_t, 0, sizeof(A_bit0_t));
+	memset(A_bit1_t, 0, sizeof(A_bit1_t));
+	memset(B_bit0_t, 0, sizeof(B_bit0_t));
+	memset(B_bit1_t, 0, sizeof(B_bit1_t));
 	_mm256_store_si256((__m256i*) A_bit0_t, A0);
 	_mm256_store_si256((__m256i*) A_bit1_t, A1);
 	_mm256_store_si256((__m256i*) B_bit0_t, B0);
@@ -180,12 +202,16 @@ void SIMD_ED::load_reads(__m256i A0, __m256i A1, __m256i B0, __m256i B1, int len
 // 只更新 read 侧，适合 reference 复用的场景。
 void SIMD_ED::load_read(__m256i A0, __m256i A1, int length) {
 	buffer_length = length;
+	memset(A_bit0_t, 0, sizeof(A_bit0_t));
+	memset(A_bit1_t, 0, sizeof(A_bit1_t));
 	_mm256_store_si256((__m256i*) A_bit0_t, A0);
 	_mm256_store_si256((__m256i*) A_bit1_t, A1);
 }
 
 // 只更新 reference 侧，适合批量比较多个 read。
 void SIMD_ED::load_ref(__m256i B0, __m256i B1) {
+	memset(B_bit0_t, 0, sizeof(B_bit0_t));
+	memset(B_bit1_t, 0, sizeof(B_bit1_t));
 	_mm256_store_si256((__m256i*) B_bit0_t, B0);
 	_mm256_store_si256((__m256i*) B_bit1_t, B1);
 }
@@ -239,7 +265,7 @@ void SIMD_ED::init_levenshtein(int ED_threshold, ED_modes mode, bool SHD_enable)
 	total_lanes = 2 * ED_t + 3;
 	mid_lane = ED_t + 1;
 
-	hamming_masks = new __m256i [total_lanes];
+	hamming_masks = alloc_aligned_masks(total_lanes);
 
 	cur_ED = new int[total_lanes];
 	ED_info = new ED_INFO[ED_t + 1];
@@ -469,7 +495,7 @@ void SIMD_ED::init_affine(int gap_threshold, int af_threshold, ED_modes mode, in
  
  	total_lanes = 2 * gap_threshold + 3;
 	mid_lane = gap_threshold + 1;
-	hamming_masks = new __m256i [total_lanes];
+	hamming_masks = alloc_aligned_masks(total_lanes);
 	ED_info = new ED_INFO[af_threshold + 1];
 
 	start = new int* [total_lanes];

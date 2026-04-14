@@ -49,7 +49,6 @@ LV::~LV() {
 		delete [] I_pos;
         delete [] D_pos;
 
-
 		for (int i = 0; i < total_lanes; i++) {
 			delete [] start[i];
 			delete [] end[i];
@@ -110,8 +109,6 @@ void LV::init(int gap_threshold, int af_threshold, ED_modes mode, int ms_penalty
 		if (distance == 0 || mode == ED_LOCAL || mode == ED_SEMI_FREE_BEGIN)
 			start[i][0] = distance;
 	}
-
-
 }
 
 // 拷贝当前 read / reference 到内部缓冲区。

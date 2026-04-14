@@ -13,7 +13,7 @@
 
 #define MAX_CHUNKS 2048
 
-uint8_t buffer[16 * MAX_CHUNKS] __aligned__;
+LEAP_ALIGNAS(32) uint8_t buffer[16 * MAX_CHUNKS];
 
 #define OPT_COUNT 5
 

@@ -8,12 +8,9 @@
 #ifndef POPCOUNT_H_
 #define POPCOUNT_H_
 
-#ifndef __aligned__
-	#define __aligned__ __attribute__((aligned(32)))
-#endif
-
 #include <stdint.h>
 #include <x86intrin.h>
+#include "leap_compat.h"
 
 uint32_t popcount_m128i_sse(__m128i reg);
 uint32_t popcount_m256i_avx(__m256i reg);
