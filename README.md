@@ -103,7 +103,19 @@ Levenshtein 和 affine gap 两套实现都围绕对角线 lane 展开：
 
 ## 构建
 
-项目使用顶层 `Makefile` 构建。推荐先创建并激活仓库附带的 conda 环境：
+项目使用顶层 `Makefile` 构建。仓库现在提供两份 conda 环境文件：
+
+- `environment.yml`：手写的最小依赖说明，适合维护和后续调整
+- `environment.lock.yml`：从当前已验证可工作的 `leap` 环境导出的锁定版本，适合直接复现
+
+如果你是在 `linux-64 / x86_64` 上直接复现当前工作环境，优先用锁定版本：
+
+```bash
+conda env create -f environment.lock.yml
+conda activate leap
+```
+
+如果你只是想按最小依赖重新求解环境，或者你准备自己调整包版本，再用：
 
 ```bash
 conda env create -f environment.yml
@@ -127,6 +139,7 @@ make testRefDB
 - Makefile 支持通过 `CC`、`CXX`、`OPT_FLAGS`、`ISA_FLAGS` 和 `USE_PARASAIL` 覆盖默认配置
 - SIMD 编译选项默认假定机器支持 BMI、AVX2 和 SSE4.2
 - `testNW` 需要显式启用 Parasail：`make testNW USE_PARASAIL=1`
+- `environment.lock.yml` 是基于当前已验证的 `linux-64` conda 环境导出，不保证跨平台可直接复用
 - Bowtie2 目录属于单独的集成实验，不走顶层默认构建流程
 
 ## 输入格式与运行方式
